@@ -18,11 +18,13 @@ SC_MODULE(store_module) {
         AWVALID.write(0); WVALID.write(0); WLAST.write(0); BREADY.write(0); ARVALID.write(0); RREADY.write(0);
         wait(100); // Stagger the start time!
 
-        // NO MORE HARDCODING: Capture the starting address from the new pin
-        sc_uint<32> current_address = START_ADDR.read(); 
+        // Capture the starting base address from the input pin
+        sc_uint<32> base_address = START_ADDR.read(); 
         int rows_written = 0;
         
         while (rows_written < 32) { 
+            // Calculate flat physical address using 2D stride (32 bytes per row)
+            sc_uint<32> current_address = base_address + (rows_written * 32);
             AWADDR.write(current_address); AWLEN.write(3); AWVALID.write(1);
             do { wait(); } while (AWREADY.read() == 0);
             AWVALID.write(0);
@@ -36,16 +38,19 @@ SC_MODULE(store_module) {
             WVALID.write(0); WLAST.write(0); BREADY.write(1);
             do { wait(); } while (BVALID.read() == 0);
             BREADY.write(0);
-            current_address += 32; rows_written++;
+            
+            rows_written++;
         }
 
         wait(100);
         
-        // NO MORE HARDCODING: Capture the starting address again for the read phase
-        current_address = START_ADDR.read(); 
+        // Capture the starting base address again for the read phase
+        base_address = START_ADDR.read(); 
         int rows_read = 0;
         
         while (rows_read < 32) {
+            // Calculate flat physical address using 2D stride (32 bytes per row)
+            sc_uint<32> current_address = base_address + (rows_read * 32);
             ARADDR.write(current_address); ARLEN.write(3); ARVALID.write(1);
             do { wait(); } while (ARREADY.read() == 0);
             ARVALID.write(0); RREADY.write(1); 
@@ -60,6 +65,8 @@ SC_MODULE(store_module) {
                 }
             }
             RREADY.write(0); // Safely close the door AFTER the 4 beats finish
+
+            rows_read++;
         }
         while(true) wait();
     }

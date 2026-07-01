@@ -3,7 +3,7 @@
 
 #include <systemc.h>
 #include "axi_interconnect.h"
-#include "axi_lite_slave.h"
+#include "axi4_full_slave.h"
 
 // ==========================================
 // COLLEAGUE IMPORTS
@@ -71,7 +71,7 @@ SC_MODULE(vta_system) {
     // 2. HARDWARE COMPONENTS
     // ==========================================
     axi_interconnect* arbiter;
-    axi_lite_slave* dram;
+    axi4_full_slave* dram;
     
     // instruction_fetch_module* fetch_inst; // <-- NEW
     // load_module* load_inst;
@@ -82,7 +82,7 @@ SC_MODULE(vta_system) {
     SC_CTOR(vta_system) {
         
         // --- INSTANTIATE MAIN MEMORY ---
-        dram = new axi_lite_slave("main_memory"); 
+        dram = new axi4_full_slave("main_memory"); 
         dram->ACLK(ACLK); dram->ARESETN(ARESETN);
         dram->AWADDR(sys_AWADDR); dram->AWVALID(sys_AWVALID); dram->AWREADY(sys_AWREADY); dram->AWLEN(sys_AWLEN);
         dram->WDATA(sys_WDATA);   dram->WVALID(sys_WVALID);   dram->WREADY(sys_WREADY);   dram->WLAST(sys_WLAST);

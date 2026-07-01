@@ -4,7 +4,7 @@
 #include "store_module.h"
 // #include "instruction_fetch_module.h" // Uncomment when ready!
 #include "axi_interconnect.h"
-#include "axi_lite_slave.h"
+#include "axi4_full_slave.h"
 
 int sc_main(int argc, char* argv[]) {
     sc_clock ACLK("ACLK", 10, SC_NS); sc_signal<bool> ARESETN;
@@ -60,7 +60,7 @@ int sc_main(int argc, char* argv[]) {
     // =========================================================
     load_module cpu("LOAD_MODULE"); compute_module gpu("COMPUTE_MODULE"); store_module tensor("STORE_MODULE");
     // instruction_fetch_module fetch("FETCH_MODULE"); // <-- NEW: Uncomment when ready!
-    axi_interconnect arbiter("ARBITER"); axi_lite_slave memory("MEMORY");
+    axi_interconnect arbiter("ARBITER"); axi4_full_slave memory("MEMORY");
 
     // =========================================================
     // --- 3. SOLDERING THE WIRES ---
@@ -184,10 +184,10 @@ int sc_main(int argc, char* argv[]) {
     // =========================================================
     ARESETN.write(0); 
 
-    // Simulate the Dispatcher sending the starting addresses
-    sys_start_m0.write(0x0000);
-    sys_start_m1.write(0x1000);
-    sys_start_m2.write(0x2000);
+    // Simulate the Dispatcher sending the starting coordinates (all share the same base offset at Row 0, Col 0)
+    sys_start_m0.write(0x00000000);
+    sys_start_m1.write(0x00000000);
+    sys_start_m2.write(0x00000000);
     sys_start_m3.write(0x3000); // <-- Fetch start address
 
     // Ensure no Dispatcher Interrupts fire randomly at startup

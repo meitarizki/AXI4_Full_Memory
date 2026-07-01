@@ -34,12 +34,13 @@ SC_MODULE(load_module) {
         // 1. FILL THE 1KB MEMORY (Write 32 Rows)
         cout << "--- STARTING MAXIMUM WRITE BURSTS ---" << endl;
         
-        // NO MORE HARDCODING: Capture the starting address from the new pin
-        sc_uint<32> current_address = START_ADDR.read(); 
+        // Capture the starting base address from the input pin
+        sc_uint<32> base_address = START_ADDR.read(); 
         int rows_written = 0;
         
         while (rows_written < 32) { 
-            // Address Phase
+            // Calculate flat physical address using 2D stride (32 bytes per row)
+            sc_uint<32> current_address = base_address + (rows_written * 32);
             AWADDR.write(current_address); AWLEN.write(3); AWVALID.write(1);
             do { wait(); } while (AWREADY.read() == 0);
             AWVALID.write(0);
@@ -58,8 +59,6 @@ SC_MODULE(load_module) {
             do { wait(); } while (BVALID.read() == 0);
             BREADY.write(0);
 
-            // Move Address down by exactly 1 STRIDE (32 bytes) for the next burst
-            current_address += 32; 
             rows_written++;
         }
 
@@ -67,11 +66,13 @@ SC_MODULE(load_module) {
         wait(20);
         cout << "--- STARTING MAXIMUM READ BURSTS ---" << endl;
         
-        // NO MORE HARDCODING: Capture the starting address again for the read phase
-        current_address = START_ADDR.read(); 
+        // Capture the starting base address again for the read phase
+        base_address = START_ADDR.read(); 
         int rows_read = 0;
 
         while (rows_read < 32) {
+            // Calculate flat physical address using 2D stride (32 bytes per row)
+            sc_uint<32> current_address = base_address + (rows_read * 32);
             ARADDR.write(current_address); ARLEN.write(3); ARVALID.write(1);
             do { wait(); } while (ARREADY.read() == 0);
             ARVALID.write(0);
@@ -87,7 +88,6 @@ SC_MODULE(load_module) {
             }
             RREADY.write(0);
             
-            current_address += 32;
             rows_read++;
         }
 
