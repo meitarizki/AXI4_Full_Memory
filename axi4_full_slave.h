@@ -27,7 +27,7 @@ SC_MODULE(axi4_full_slave) {
     sc_uint<32> current_w_addr; 
     sc_uint<32> current_r_addr;
 
-    int write_delay_counter, read_delay_counter, read_burst_count, active_arlen;
+    int read_burst_count, active_arlen;
 
     // ==========================================
     // WRITE STATE MACHINE
@@ -36,34 +36,33 @@ SC_MODULE(axi4_full_slave) {
         if (!ARESETN.read()) { write_state.write(state_idle); AWREADY.write(0); WREADY.write(0); BVALID.write(0); return; }
 
         switch (write_state.read()) {
-            case state_idle: if (AWVALID.read()) write_state.write(state_ready); break;
+            case state_idle: 
+                AWREADY.write(0); WREADY.write(0); BVALID.write(0); BRESP.write(0);
+                if (AWVALID.read() == 1) { write_state.write(state_ready); } 
+                break;
             case state_ready:
                 AWREADY.write(1); 
                 if (AWVALID.read() && AWREADY.read()) { 
                     current_w_addr = AWADDR.read();     
-                    AWREADY.write(0); write_delay_counter = 0; write_state.write(state_burst_write); 
+                    AWREADY.write(0); WREADY.write(1); write_state.write(state_burst_write); 
                 }
                 break;
             case state_burst_write:
-                if (write_delay_counter == 0) { WREADY.write(0); write_delay_counter = 1; } 
-                else {
-                    WREADY.write(1); 
-                    if (WVALID.read() == 1) {
-                        sc_uint<32> data = WDATA.read(); 
-                        
-                        if (current_w_addr + 3 < 65536) {
-                            memory_array[current_w_addr + 0] = data.range(7, 0); 
-                            memory_array[current_w_addr + 1] = data.range(15, 8);   
-                            memory_array[current_w_addr + 2] = data.range(23, 16); 
-                            memory_array[current_w_addr + 3] = data.range(31, 24);
-                        }
-                        
-                        // Strict linear increment
-                        current_w_addr += 4; 
-                        
-                        write_delay_counter = 0; 
-                        if (WLAST.read() == 1) { WREADY.write(0); write_state.write(state_response); }
+                WREADY.write(1); 
+                if (WVALID.read() == 1) {
+                    sc_uint<32> data = WDATA.read(); 
+                    
+                    if (current_w_addr + 3 < 65536) {
+                        memory_array[current_w_addr + 0] = data.range(7, 0); 
+                        memory_array[current_w_addr + 1] = data.range(15, 8);   
+                        memory_array[current_w_addr + 2] = data.range(23, 16); 
+                        memory_array[current_w_addr + 3] = data.range(31, 24);
                     }
+                    
+                    // Strict linear increment
+                    current_w_addr += 4; 
+                    
+                    if (WLAST.read() == 1) { WREADY.write(0); write_state.write(state_response); }
                 }
                 break;
             case state_response:
@@ -85,36 +84,33 @@ SC_MODULE(axi4_full_slave) {
                 if (ARVALID.read() == 1) {
                     current_r_addr = ARADDR.read();    
                     active_arlen = ARLEN.read(); // Latch the dynamic burst length!
-                    ARREADY.write(1); read_burst_count = 0; read_delay_counter = 0; read_state.write(r_burst); 
+                    ARREADY.write(1); read_burst_count = 0; read_state.write(r_burst); 
                 } else { ARREADY.write(0); }
                 break;
 
             case r_burst:
                 ARREADY.write(0); 
-                if (read_delay_counter == 0) { RVALID.write(0); read_delay_counter = 1; } 
-                else {
-                    sc_uint<32> mem_data = 0;
+                sc_uint<32> mem_data = 0;
+                
+                if (current_r_addr + 3 < 65536) {
+                    mem_data = (memory_array[current_r_addr + 3] << 24) | 
+                               (memory_array[current_r_addr + 2] << 16) | 
+                               (memory_array[current_r_addr + 1] << 8)  | 
+                               (memory_array[current_r_addr + 0]);
+                }
+                RDATA.write(mem_data); RRESP.write(0); RVALID.write(1); 
+                
+                // Assert RLAST dynamically on the final beat (read_burst_count == active_arlen)
+                if (read_burst_count == active_arlen) RLAST.write(1); else RLAST.write(0);
+
+                if (RREADY.read() == 1) {
+                    // Strict linear increment
+                    current_r_addr += 4;
                     
-                    if (current_r_addr + 3 < 65536) {
-                        mem_data = (memory_array[current_r_addr + 3] << 24) | 
-                                   (memory_array[current_r_addr + 2] << 16) | 
-                                   (memory_array[current_r_addr + 1] << 8)  | 
-                                   (memory_array[current_r_addr + 0]);
-                    }
-                    RDATA.write(mem_data); RRESP.write(0); RVALID.write(1); 
+                    read_burst_count++; 
                     
-                    // Assert RLAST dynamically on the final beat (read_burst_count == active_arlen)
-                    if (read_burst_count == active_arlen) RLAST.write(1); else RLAST.write(0);
- 
-                    if (RREADY.read() == 1) {
-                        // Strict linear increment
-                        current_r_addr += 4;
-                        
-                        read_burst_count++; read_delay_counter = 0; 
-                        
-                        // Transition to r_idle once all beats (active_arlen + 1) are complete
-                        if (read_burst_count == active_arlen + 1) { read_state.write(r_idle); }
-                    }
+                    // Transition to r_idle once all beats (active_arlen + 1) are complete
+                    if (read_burst_count == active_arlen + 1) { read_state.write(r_idle); }
                 }
                 break;
         }
