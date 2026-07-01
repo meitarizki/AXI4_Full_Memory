@@ -27,7 +27,7 @@ SC_MODULE(axi4_full_slave) {
     sc_uint<32> current_w_addr; 
     sc_uint<32> current_r_addr;
 
-    int write_delay_counter, read_delay_counter, read_burst_count;
+    int write_delay_counter, read_delay_counter, read_burst_count, active_arlen;
 
     // ==========================================
     // WRITE STATE MACHINE
@@ -84,6 +84,7 @@ SC_MODULE(axi4_full_slave) {
                 RVALID.write(0); RLAST.write(0); // Delta-cycle fix safely retained
                 if (ARVALID.read() == 1) {
                     current_r_addr = ARADDR.read();    
+                    active_arlen = ARLEN.read(); // Latch the dynamic burst length!
                     ARREADY.write(1); read_burst_count = 0; read_delay_counter = 0; read_state.write(r_burst); 
                 } else { ARREADY.write(0); }
                 break;
@@ -101,15 +102,18 @@ SC_MODULE(axi4_full_slave) {
                                    (memory_array[current_r_addr + 0]);
                     }
                     RDATA.write(mem_data); RRESP.write(0); RVALID.write(1); 
-                    if (read_burst_count == 3) RLAST.write(1); else RLAST.write(0);
-
+                    
+                    // Assert RLAST dynamically on the final beat (read_burst_count == active_arlen)
+                    if (read_burst_count == active_arlen) RLAST.write(1); else RLAST.write(0);
+ 
                     if (RREADY.read() == 1) {
                         // Strict linear increment
                         current_r_addr += 4;
                         
                         read_burst_count++; read_delay_counter = 0; 
                         
-                        if (read_burst_count == 4) { read_state.write(r_idle); }
+                        // Transition to r_idle once all beats (active_arlen + 1) are complete
+                        if (read_burst_count == active_arlen + 1) { read_state.write(r_idle); }
                     }
                 }
                 break;
