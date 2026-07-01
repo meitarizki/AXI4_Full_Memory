@@ -100,25 +100,25 @@ SC_MODULE(axi_interconnect) {
                 if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
                 WDATA_OUT.write(WDATA_M0.read()); WVALID_OUT.write(WVALID_M0.read()); WLAST_OUT.write(WLAST_M0.read()); BREADY_OUT.write(BREADY_M0.read()); WREADY_M0.write(WREADY_IN.read()); BVALID_M0.write(BVALID_IN.read());
                 WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M2.write(0); BVALID_M2.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
-                if (BVALID_IN.read() && BREADY_M0.read()) { active_master = -1; m0_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
+                if (BVALID_IN.read()) { active_master = -1; m0_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
             } else if (active_master == 1) {
                 AWADDR_OUT.write(m1_saved_addr); AWLEN_OUT.write(m1_saved_awlen);
                 if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
                 WDATA_OUT.write(WDATA_M1.read()); WVALID_OUT.write(WVALID_M1.read()); WLAST_OUT.write(WLAST_M1.read()); BREADY_OUT.write(BREADY_M1.read()); WREADY_M1.write(WREADY_IN.read()); BVALID_M1.write(BVALID_IN.read());
                 WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M2.write(0); BVALID_M2.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
-                if (BVALID_IN.read() && BREADY_M1.read()) { active_master = -1; m1_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
+                if (BVALID_IN.read()) { active_master = -1; m1_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
             } else if (active_master == 2) {
                 AWADDR_OUT.write(m2_saved_addr); AWLEN_OUT.write(m2_saved_awlen);
                 if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
                 WDATA_OUT.write(WDATA_M2.read()); WVALID_OUT.write(WVALID_M2.read()); WLAST_OUT.write(WLAST_M2.read()); BREADY_OUT.write(BREADY_M2.read()); WREADY_M2.write(WREADY_IN.read()); BVALID_M2.write(BVALID_IN.read());
                 WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
-                if (BVALID_IN.read() && BREADY_M2.read()) { active_master = -1; m2_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
+                if (BVALID_IN.read()) { active_master = -1; m2_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
             } else if (active_master == 3) {
                 AWADDR_OUT.write(m3_saved_addr); AWLEN_OUT.write(m3_saved_awlen);
                 if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
                 WDATA_OUT.write(WDATA_M3.read()); WVALID_OUT.write(WVALID_M3.read()); WLAST_OUT.write(WLAST_M3.read()); BREADY_OUT.write(BREADY_M3.read()); WREADY_M3.write(WREADY_IN.read()); BVALID_M3.write(BVALID_IN.read());
                 WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M2.write(0); BVALID_M2.write(0);
-                if (BVALID_IN.read() && BREADY_M3.read()) { active_master = -1; m3_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
+                if (BVALID_IN.read()) { active_master = -1; m3_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
             } else {
                 AWVALID_OUT.write(0); WVALID_OUT.write(0); WLAST_OUT.write(0); AWLEN_OUT.write(0);
                 WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M2.write(0); BVALID_M2.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
@@ -152,25 +152,25 @@ SC_MODULE(axi_interconnect) {
                 if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
                 RDATA_M0.write(RDATA_IN.read()); RLAST_M0.write(RLAST_IN.read()); RVALID_M0.write(RVALID_IN.read()); RRESP_M0.write(RRESP_IN.read()); RREADY_OUT.write(RREADY_M0.read());
                 RVALID_M1.write(0); RVALID_M2.write(0); RVALID_M3.write(0); 
-                if (RVALID_IN.read() && RREADY_M0.read() && RLAST_IN.read()) { active_read_master = -1; r_m0_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
+                if (RVALID_IN.read() && RLAST_IN.read()) { active_read_master = -1; r_m0_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
             } else if (active_read_master == 1) {
                 ARADDR_OUT.write(r_m1_saved_addr); ARLEN_OUT.write(r_m1_saved_arlen);
                 if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
                 RDATA_M1.write(RDATA_IN.read()); RLAST_M1.write(RLAST_IN.read()); RVALID_M1.write(RVALID_IN.read()); RRESP_M1.write(RRESP_IN.read()); RREADY_OUT.write(RREADY_M1.read());
                 RVALID_M0.write(0); RVALID_M2.write(0); RVALID_M3.write(0);
-                if (RVALID_IN.read() && RREADY_M1.read() && RLAST_IN.read()) { active_read_master = -1; r_m1_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
+                if (RVALID_IN.read() && RLAST_IN.read()) { active_read_master = -1; r_m1_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
             } else if (active_read_master == 2) {
                 ARADDR_OUT.write(r_m2_saved_addr); ARLEN_OUT.write(r_m2_saved_arlen);
                 if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
                 RDATA_M2.write(RDATA_IN.read()); RLAST_M2.write(RLAST_IN.read()); RVALID_M2.write(RVALID_IN.read()); RRESP_M2.write(RRESP_IN.read()); RREADY_OUT.write(RREADY_M2.read());
                 RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M3.write(0);
-                if (RVALID_IN.read() && RREADY_M2.read() && RLAST_IN.read()) { active_read_master = -1; r_m2_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
+                if (RVALID_IN.read() && RLAST_IN.read()) { active_read_master = -1; r_m2_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
             } else if (active_read_master == 3) {
                 ARADDR_OUT.write(r_m3_saved_addr); ARLEN_OUT.write(r_m3_saved_arlen);
                 if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
                 RDATA_M3.write(RDATA_IN.read()); RLAST_M3.write(RLAST_IN.read()); RVALID_M3.write(RVALID_IN.read()); RRESP_M3.write(RRESP_IN.read()); RREADY_OUT.write(RREADY_M3.read());
                 RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M2.write(0);
-                if (RVALID_IN.read() && RREADY_M3.read() && RLAST_IN.read()) { active_read_master = -1; r_m3_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
+                if (RVALID_IN.read() && RLAST_IN.read()) { active_read_master = -1; r_m3_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
             } else {
                 ARVALID_OUT.write(0); RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M2.write(0); RVALID_M3.write(0); ARLEN_OUT.write(0);
             }
