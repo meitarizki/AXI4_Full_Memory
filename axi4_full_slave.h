@@ -3,6 +3,7 @@
 
 #include <systemc.h>
 #include <cstdlib> // Required for rand()
+#include <vector>
 
 enum fsm_state { state_idle, state_ready, state_burst_write, state_response };
 enum read_fsm { r_idle, r_burst };
@@ -18,8 +19,9 @@ SC_MODULE(axi4_full_slave) {
     sc_in<sc_uint<32>> ARADDR; sc_in<bool> ARVALID; sc_out<bool> ARREADY; sc_in<sc_uint<8>> ARLEN;
     sc_out<sc_uint<32>> RDATA; sc_out<sc_uint<2>> RRESP; sc_out<bool> RVALID; sc_in<bool> RREADY; sc_out<bool> RLAST;
 
-    // --- 1D MEMORY ARCHITECTURE (64KB) ---
-    sc_uint<8> memory_array[65536]; 
+    // --- 1D MEMORY ARCHITECTURE (8MB) ---
+    std::vector<uint8_t> memory_array; 
+    
     
     sc_signal<fsm_state> write_state; sc_signal<read_fsm> read_state;
     
@@ -52,7 +54,7 @@ SC_MODULE(axi4_full_slave) {
                 if (WVALID.read() == 1) {
                     sc_uint<32> data = WDATA.read(); 
                     
-                    if (current_w_addr + 3 < 65536) {
+                    if (current_w_addr + 3 < 8388608) {
                         memory_array[current_w_addr + 0] = data.range(7, 0); 
                         memory_array[current_w_addr + 1] = data.range(15, 8);   
                         memory_array[current_w_addr + 2] = data.range(23, 16); 
@@ -92,7 +94,7 @@ SC_MODULE(axi4_full_slave) {
                 ARREADY.write(0); 
                 sc_uint<32> mem_data = 0;
                 
-                if (current_r_addr + 3 < 65536) {
+                if (current_r_addr + 3 < 8388608) {
                     mem_data = (memory_array[current_r_addr + 3] << 24) | 
                                (memory_array[current_r_addr + 2] << 16) | 
                                (memory_array[current_r_addr + 1] << 8)  | 
@@ -117,8 +119,9 @@ SC_MODULE(axi4_full_slave) {
     }
 
     SC_CTOR(axi4_full_slave) { 
+        memory_array.resize(8388608);
         // Power-On SRAM Randomization 
-        for (int i = 0; i < 65536; i++) {
+        for (int i = 0; i < 8388608; i++) {
             memory_array[i] = rand() % 256;
         }
 
