@@ -172,7 +172,11 @@ SC_MODULE(axi_interconnect) {
                 RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M2.write(0);
                 if (r_addr_accepted && RVALID_IN.read() && RREADY_M3.read() && RLAST_IN.read()) { active_read_master = -1; r_m3_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
             } else {
-                ARVALID_OUT.write(0); RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M2.write(0); RVALID_M3.write(0); ARLEN_OUT.write(0);
+                ARVALID_OUT.write(0); ARLEN_OUT.write(0);
+                RVALID_M0.write(0); RDATA_M0.write(0); RLAST_M0.write(0); RRESP_M0.write(0);
+                RVALID_M1.write(0); RDATA_M1.write(0); RLAST_M1.write(0); RRESP_M1.write(0);
+                RVALID_M2.write(0); RDATA_M2.write(0); RLAST_M2.write(0); RRESP_M2.write(0);
+                RVALID_M3.write(0); RDATA_M3.write(0); RLAST_M3.write(0); RRESP_M3.write(0);
             }
         } 
     }
