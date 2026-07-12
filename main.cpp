@@ -168,9 +168,10 @@ int sc_main(int argc, char* argv[]) {
     sc_trace_file *wf = sc_create_vcd_trace_file("soc_trace");
     sc_trace(wf, ACLK, "ACLK"); sc_trace(wf, ARESETN, "ARESETN");
     sc_trace(wf, arbiter.active_master, "active_write_master");
-    sc_trace(wf, awvalid_out, "ARBITER_AWVALID_OUT"); sc_trace(wf, awaddr_out,  "ARBITER_AWADDR_OUT");
+    sc_trace(wf, awvalid_out, "ARBITER_AWVALID_OUT"); sc_trace(wf, awready_in,   "MEMORY_AWREADY"); sc_trace(wf, awaddr_out,  "ARBITER_AWADDR_OUT");
     sc_trace(wf, wvalid_out,  "ARBITER_WVALID_OUT"); sc_trace(wf, wdata_out,   "ARBITER_WDATA_OUT");
     sc_trace(wf, bvalid_in,   "MEMORY_BVALID");
+    sc_trace(wf, awready_m0,  "CPU_AWREADY"); sc_trace(wf, awready_m1,  "GPU_AWREADY"); sc_trace(wf, awready_m2,  "TENSOR_AWREADY");
     sc_trace(wf, arbiter.active_read_master, "active_read_master");
     sc_trace(wf, arvalid_out, "ARBITER_ARVALID_OUT"); sc_trace(wf, araddr_out,  "ARBITER_ARADDR_OUT");
     sc_trace(wf, rvalid_in,   "MEMORY_RVALID"); sc_trace(wf, rdata_in,    "MEMORY_RDATA"); sc_trace(wf, rlast_in,    "MEMORY_RLAST");
