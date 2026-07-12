@@ -51,9 +51,9 @@ SC_MODULE(store_module) {
         while (rows_read < 32) {
             // Calculate flat physical address using 2D stride (32 bytes per row)
             sc_uint<32> current_address = base_address + (rows_read * 32);
-            ARADDR.write(current_address); ARLEN.write(3); ARVALID.write(1);
+            ARADDR.write(current_address); ARLEN.write(3); ARVALID.write(1); RREADY.write(1);
             do { wait(); } while (ARREADY.read() == 0);
-            ARVALID.write(0); RREADY.write(1); 
+            ARVALID.write(0);
             
             int read_count = 0;  
             // Safer Read Loop: No breaks, just count to 4 naturally

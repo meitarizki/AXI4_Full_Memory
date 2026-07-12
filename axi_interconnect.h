@@ -46,179 +46,275 @@ SC_MODULE(axi_interconnect) {
     sc_out<sc_uint<32>> ARADDR_OUT; sc_out<bool> ARVALID_OUT; sc_in<bool> ARREADY_IN; sc_out<sc_uint<8>> ARLEN_OUT;
     sc_in<sc_uint<32>> RDATA_IN; sc_in<sc_uint<2>> RRESP_IN; sc_in<bool> RVALID_IN; sc_out<bool> RREADY_OUT; sc_in<bool> RLAST_IN;
 
-    // --- STATE VARIABLES ---
-    bool m0_queued = false, m1_queued = false, m2_queued = false, m3_queued = false;
-    sc_uint<32> m0_saved_addr, m1_saved_addr, m2_saved_addr, m3_saved_addr;
-    sc_uint<8> m0_saved_awlen, m1_saved_awlen, m2_saved_awlen, m3_saved_awlen;
-    int active_master = -1;
-    bool w_addr_accepted = false; 
- 
-    bool r_m0_queued = false, r_m1_queued = false, r_m2_queued = false, r_m3_queued = false;
-    sc_uint<32> r_m0_saved_addr, r_m1_saved_addr, r_m2_saved_addr, r_m3_saved_addr;
-    sc_uint<8> r_m0_saved_arlen, r_m1_saved_arlen, r_m2_saved_arlen, r_m3_saved_arlen;
-    int active_read_master = -1;
-    bool r_addr_accepted = false; 
+    // --- STATE SIGNALS ---
+    sc_signal<int> active_master;
+    sc_signal<int> active_read_master;
 
-    void process_interconnect() {
-        while (true) {
-            wait(); 
+    // Combinational routing logic
+    void route_signals() {
+        // --- WRITE CHANNEL ROUTING ---
+        int target_write = -1;
+        if (active_master.read() != -1) {
+            target_write = active_master.read();
+        } else {
+            // Priority selection if arbiter is idle
+            if (AWLOCK_M0.read() == 1 && AWVALID_M0.read() == 1) target_write = 0;
+            else if (AWLOCK_M1.read() == 1 && AWVALID_M1.read() == 1) target_write = 1;
+            else if (AWLOCK_M2.read() == 1 && AWVALID_M2.read() == 1) target_write = 2;
+            else if (AWLOCK_M3.read() == 1 && AWVALID_M3.read() == 1) target_write = 3;
+            else if (AWVALID_M0.read() == 1) target_write = 0;
+            else if (AWVALID_M1.read() == 1) target_write = 1;
+            else if (AWVALID_M2.read() == 1) target_write = 2;
+            else if (AWVALID_M3.read() == 1) target_write = 3;
+        }
 
-            if (!ARESETN.read()) {
-                active_master = -1; active_read_master = -1;
-                w_addr_accepted = false; r_addr_accepted = false;
-                m0_queued = false; m1_queued = false; m2_queued = false; m3_queued = false;
-                r_m0_queued = false; r_m1_queued = false; r_m2_queued = false; r_m3_queued = false;
-                AWVALID_OUT.write(0); WVALID_OUT.write(0); ARVALID_OUT.write(0);
-                continue; 
-            }
+        if (target_write == 0) {
+            AWADDR_OUT.write(AWADDR_M0.read());
+            AWLEN_OUT.write(AWLEN_M0.read());
+            AWVALID_OUT.write(AWVALID_M0.read());
+            AWREADY_M0.write(AWREADY_IN.read());
+            AWREADY_M1.write(0); AWREADY_M2.write(0); AWREADY_M3.write(0);
 
-            // ========================================================
-            // 1. THE WRITE ARBITER (4-PORT)
-            // ========================================================
-            if (AWVALID_M0.read() == 1 && !m0_queued) { m0_saved_addr = AWADDR_M0.read(); m0_saved_awlen = AWLEN_M0.read(); m0_queued = true; AWREADY_M0.write(1); } else { AWREADY_M0.write(0); }
-            if (AWVALID_M1.read() == 1 && !m1_queued) { m1_saved_addr = AWADDR_M1.read(); m1_saved_awlen = AWLEN_M1.read(); m1_queued = true; AWREADY_M1.write(1); } else { AWREADY_M1.write(0); }
-            if (AWVALID_M2.read() == 1 && !m2_queued) { m2_saved_addr = AWADDR_M2.read(); m2_saved_awlen = AWLEN_M2.read(); m2_queued = true; AWREADY_M2.write(1); } else { AWREADY_M2.write(0); }
-            if (AWVALID_M3.read() == 1 && !m3_queued) { m3_saved_addr = AWADDR_M3.read(); m3_saved_awlen = AWLEN_M3.read(); m3_queued = true; AWREADY_M3.write(1); } else { AWREADY_M3.write(0); }
+            WDATA_OUT.write(WDATA_M0.read());
+            WVALID_OUT.write(WVALID_M0.read());
+            WLAST_OUT.write(WLAST_M0.read());
+            WREADY_M0.write(WREADY_IN.read());
+            WREADY_M1.write(0); WREADY_M2.write(0); WREADY_M3.write(0);
 
-            if (active_master == -1) {
-                // PRIORITY 1: DISPATCHER VIP LOCKS
-                if (AWLOCK_M0.read() == 1 && m0_queued) active_master = 0;
-                else if (AWLOCK_M1.read() == 1 && m1_queued) active_master = 1;
-                else if (AWLOCK_M2.read() == 1 && m2_queued) active_master = 2;
-                else if (AWLOCK_M3.read() == 1 && m3_queued) active_master = 3;
-                
-                // PRIORITY 2: STANDARD QUEUE
-                else if (m0_queued) active_master = 0; 
-                else if (m1_queued) active_master = 1; 
-                else if (m2_queued) active_master = 2;
-                else if (m3_queued) active_master = 3;
-            }
-
-            // --- WRITE ROUTING LOGIC ---
-            if (active_master == 0) {
-                AWADDR_OUT.write(m0_saved_addr); AWLEN_OUT.write(m0_saved_awlen);
-                if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
-                WDATA_OUT.write(WDATA_M0.read()); WVALID_OUT.write(WVALID_M0.read()); WLAST_OUT.write(WLAST_M0.read()); WREADY_M0.write(WREADY_IN.read()); BVALID_M0.write(BVALID_IN.read());
-                WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M2.write(0); BVALID_M2.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
-                if (w_addr_accepted && BVALID_IN.read() && BREADY_M0.read()) { active_master = -1; m0_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
-            } else if (active_master == 1) {
-                AWADDR_OUT.write(m1_saved_addr); AWLEN_OUT.write(m1_saved_awlen);
-                if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
-                WDATA_OUT.write(WDATA_M1.read()); WVALID_OUT.write(WVALID_M1.read()); WLAST_OUT.write(WLAST_M1.read()); WREADY_M1.write(WREADY_IN.read()); BVALID_M1.write(BVALID_IN.read());
-                WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M2.write(0); BVALID_M2.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
-                if (w_addr_accepted && BVALID_IN.read() && BREADY_M1.read()) { active_master = -1; m1_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
-            } else if (active_master == 2) {
-                AWADDR_OUT.write(m2_saved_addr); AWLEN_OUT.write(m2_saved_awlen);
-                if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
-                WDATA_OUT.write(WDATA_M2.read()); WVALID_OUT.write(WVALID_M2.read()); WLAST_OUT.write(WLAST_M2.read()); WREADY_M2.write(WREADY_IN.read()); BVALID_M2.write(BVALID_IN.read());
-                WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
-                if (w_addr_accepted && BVALID_IN.read() && BREADY_M2.read()) { active_master = -1; m2_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
-            } else if (active_master == 3) {
-                AWADDR_OUT.write(m3_saved_addr); AWLEN_OUT.write(m3_saved_awlen);
-                if (!w_addr_accepted) { AWVALID_OUT.write(1); if (AWREADY_IN.read() == 1) w_addr_accepted = true; } else { AWVALID_OUT.write(0); }
-                WDATA_OUT.write(WDATA_M3.read()); WVALID_OUT.write(WVALID_M3.read()); WLAST_OUT.write(WLAST_M3.read()); WREADY_M3.write(WREADY_IN.read()); BVALID_M3.write(BVALID_IN.read());
-                WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M2.write(0); BVALID_M2.write(0);
-                if (w_addr_accepted && BVALID_IN.read() && BREADY_M3.read()) { active_master = -1; m3_queued = false; w_addr_accepted = false; AWVALID_OUT.write(0); }
-            } else {
-                AWVALID_OUT.write(0); WVALID_OUT.write(0); WLAST_OUT.write(0); AWLEN_OUT.write(0);
-                WREADY_M0.write(0); BVALID_M0.write(0); WREADY_M1.write(0); BVALID_M1.write(0); WREADY_M2.write(0); BVALID_M2.write(0); WREADY_M3.write(0); BVALID_M3.write(0);
-            }
-
-            // ========================================================
-            // 2. THE READ ARBITER (4-PORT)
-            // ========================================================
-            if (ARVALID_M0.read() == 1 && !r_m0_queued) { r_m0_saved_addr = ARADDR_M0.read(); r_m0_saved_arlen = ARLEN_M0.read(); r_m0_queued = true; ARREADY_M0.write(1); } else { ARREADY_M0.write(0); }
-            if (ARVALID_M1.read() == 1 && !r_m1_queued) { r_m1_saved_addr = ARADDR_M1.read(); r_m1_saved_arlen = ARLEN_M1.read(); r_m1_queued = true; ARREADY_M1.write(1); } else { ARREADY_M1.write(0); }
-            if (ARVALID_M2.read() == 1 && !r_m2_queued) { r_m2_saved_addr = ARADDR_M2.read(); r_m2_saved_arlen = ARLEN_M2.read(); r_m2_queued = true; ARREADY_M2.write(1); } else { ARREADY_M2.write(0); }
-            if (ARVALID_M3.read() == 1 && !r_m3_queued) { r_m3_saved_addr = ARADDR_M3.read(); r_m3_saved_arlen = ARLEN_M3.read(); r_m3_queued = true; ARREADY_M3.write(1); } else { ARREADY_M3.write(0); }
-
-            if (active_read_master == -1) {
-                // PRIORITY 1: DISPATCHER VIP LOCKS
-                if (ARLOCK_M0.read() == 1 && r_m0_queued) active_read_master = 0;
-                else if (ARLOCK_M1.read() == 1 && r_m1_queued) active_read_master = 1;
-                else if (ARLOCK_M2.read() == 1 && r_m2_queued) active_read_master = 2;
-                else if (ARLOCK_M3.read() == 1 && r_m3_queued) active_read_master = 3;
-                
-                // PRIORITY 2: STANDARD QUEUE
-                else if (r_m0_queued) active_read_master = 0; 
-                else if (r_m1_queued) active_read_master = 1; 
-                else if (r_m2_queued) active_read_master = 2;
-                else if (r_m3_queued) active_read_master = 3;
-            }
-
-            // --- READ ROUTING LOGIC ---
-            if (active_read_master == 0) {
-                ARADDR_OUT.write(r_m0_saved_addr); ARLEN_OUT.write(r_m0_saved_arlen);
-                if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
-                RDATA_M0.write(RDATA_IN.read()); RLAST_M0.write(RLAST_IN.read()); RVALID_M0.write(RVALID_IN.read()); RRESP_M0.write(RRESP_IN.read());
-                RVALID_M1.write(0); RVALID_M2.write(0); RVALID_M3.write(0); 
-                RLAST_M1.write(0); RLAST_M2.write(0); RLAST_M3.write(0);
-                if (r_addr_accepted && RVALID_IN.read() && RREADY_M0.read() && RLAST_IN.read()) { active_read_master = -1; r_m0_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
-            } else if (active_read_master == 1) {
-                ARADDR_OUT.write(r_m1_saved_addr); ARLEN_OUT.write(r_m1_saved_arlen);
-                if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
-                RDATA_M1.write(RDATA_IN.read()); RLAST_M1.write(RLAST_IN.read()); RVALID_M1.write(RVALID_IN.read()); RRESP_M1.write(RRESP_IN.read());
-                RVALID_M0.write(0); RVALID_M2.write(0); RVALID_M3.write(0);
-                RLAST_M0.write(0); RLAST_M2.write(0); RLAST_M3.write(0);
-                if (r_addr_accepted && RVALID_IN.read() && RREADY_M1.read() && RLAST_IN.read()) { active_read_master = -1; r_m1_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
-            } else if (active_read_master == 2) {
-                ARADDR_OUT.write(r_m2_saved_addr); ARLEN_OUT.write(r_m2_saved_arlen);
-                if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
-                RDATA_M2.write(RDATA_IN.read()); RLAST_M2.write(RLAST_IN.read()); RVALID_M2.write(RVALID_IN.read()); RRESP_M2.write(RRESP_IN.read());
-                RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M3.write(0);
-                RLAST_M0.write(0); RLAST_M1.write(0); RLAST_M3.write(0);
-                if (r_addr_accepted && RVALID_IN.read() && RREADY_M2.read() && RLAST_IN.read()) { active_read_master = -1; r_m2_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
-            } else if (active_read_master == 3) {
-                ARADDR_OUT.write(r_m3_saved_addr); ARLEN_OUT.write(r_m3_saved_arlen);
-                if (!r_addr_accepted) { ARVALID_OUT.write(1); if (ARREADY_IN.read() == 1) r_addr_accepted = true; } else { ARVALID_OUT.write(0); }
-                RDATA_M3.write(RDATA_IN.read()); RLAST_M3.write(RLAST_IN.read()); RVALID_M3.write(RVALID_IN.read()); RRESP_M3.write(RRESP_IN.read());
-                RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M2.write(0);
-                RLAST_M0.write(0); RLAST_M1.write(0); RLAST_M2.write(0);
-                if (r_addr_accepted && RVALID_IN.read() && RREADY_M3.read() && RLAST_IN.read()) { active_read_master = -1; r_m3_queued = false; r_addr_accepted = false; ARVALID_OUT.write(0); }
-            } else {
-                ARVALID_OUT.write(0); ARLEN_OUT.write(0);
-                RVALID_M0.write(0); RDATA_M0.write(0); RLAST_M0.write(0); RRESP_M0.write(0);
-                RVALID_M1.write(0); RDATA_M1.write(0); RLAST_M1.write(0); RRESP_M1.write(0);
-                RVALID_M2.write(0); RDATA_M2.write(0); RLAST_M2.write(0); RRESP_M2.write(0);
-                RVALID_M3.write(0); RDATA_M3.write(0); RLAST_M3.write(0); RRESP_M3.write(0);
-            }
-        } 
-    }
-
-    void process_handshakes() {
-        if (active_master == 0) {
+            BRESP_M0.write(BRESP_IN.read());
+            BVALID_M0.write(BVALID_IN.read());
+            BVALID_M1.write(0); BVALID_M2.write(0); BVALID_M3.write(0);
             BREADY_OUT.write(BREADY_M0.read());
-        } else if (active_master == 1) {
+        } else if (target_write == 1) {
+            AWADDR_OUT.write(AWADDR_M1.read());
+            AWLEN_OUT.write(AWLEN_M1.read());
+            AWVALID_OUT.write(AWVALID_M1.read());
+            AWREADY_M1.write(AWREADY_IN.read());
+            AWREADY_M0.write(0); AWREADY_M2.write(0); AWREADY_M3.write(0);
+
+            WDATA_OUT.write(WDATA_M1.read());
+            WVALID_OUT.write(WVALID_M1.read());
+            WLAST_OUT.write(WLAST_M1.read());
+            WREADY_M1.write(WREADY_IN.read());
+            WREADY_M0.write(0); WREADY_M2.write(0); WREADY_M3.write(0);
+
+            BRESP_M1.write(BRESP_IN.read());
+            BVALID_M1.write(BVALID_IN.read());
+            BVALID_M0.write(0); BVALID_M2.write(0); BVALID_M3.write(0);
             BREADY_OUT.write(BREADY_M1.read());
-        } else if (active_master == 2) {
+        } else if (target_write == 2) {
+            AWADDR_OUT.write(AWADDR_M2.read());
+            AWLEN_OUT.write(AWLEN_M2.read());
+            AWVALID_OUT.write(AWVALID_M2.read());
+            AWREADY_M2.write(AWREADY_IN.read());
+            AWREADY_M0.write(0); AWREADY_M1.write(0); AWREADY_M3.write(0);
+
+            WDATA_OUT.write(WDATA_M2.read());
+            WVALID_OUT.write(WVALID_M2.read());
+            WLAST_OUT.write(WLAST_M2.read());
+            WREADY_M2.write(WREADY_IN.read());
+            WREADY_M0.write(0); WREADY_M1.write(0); WREADY_M3.write(0);
+
+            BRESP_M2.write(BRESP_IN.read());
+            BVALID_M2.write(BVALID_IN.read());
+            BVALID_M0.write(0); BVALID_M1.write(0); BVALID_M3.write(0);
             BREADY_OUT.write(BREADY_M2.read());
-        } else if (active_master == 3) {
+        } else if (target_write == 3) {
+            AWADDR_OUT.write(AWADDR_M3.read());
+            AWLEN_OUT.write(AWLEN_M3.read());
+            AWVALID_OUT.write(AWVALID_M3.read());
+            AWREADY_M3.write(AWREADY_IN.read());
+            AWREADY_M0.write(0); AWREADY_M1.write(0); AWREADY_M2.write(0);
+
+            WDATA_OUT.write(WDATA_M3.read());
+            WVALID_OUT.write(WVALID_M3.read());
+            WLAST_OUT.write(WLAST_M3.read());
+            WREADY_M3.write(WREADY_IN.read());
+            WREADY_M0.write(0); WREADY_M1.write(0); WREADY_M2.write(0);
+
+            BRESP_M3.write(BRESP_IN.read());
+            BVALID_M3.write(BVALID_IN.read());
+            BVALID_M0.write(0); BVALID_M1.write(0); BVALID_M2.write(0);
             BREADY_OUT.write(BREADY_M3.read());
         } else {
+            AWADDR_OUT.write(0);
+            AWLEN_OUT.write(0);
+            AWVALID_OUT.write(0);
+            AWREADY_M0.write(0); AWREADY_M1.write(0); AWREADY_M2.write(0); AWREADY_M3.write(0);
+
+            WDATA_OUT.write(0);
+            WVALID_OUT.write(0);
+            WLAST_OUT.write(0);
+            WREADY_M0.write(0); WREADY_M1.write(0); WREADY_M2.write(0); WREADY_M3.write(0);
+
+            BVALID_M0.write(0); BVALID_M1.write(0); BVALID_M2.write(0); BVALID_M3.write(0);
             BREADY_OUT.write(0);
         }
 
-        if (active_read_master == 0) {
+        // --- READ CHANNEL ROUTING ---
+        int target_read = -1;
+        if (active_read_master.read() != -1) {
+            target_read = active_read_master.read();
+        } else {
+            // Priority selection if read arbiter is idle
+            if (ARLOCK_M0.read() == 1 && ARVALID_M0.read() == 1) target_read = 0;
+            else if (ARLOCK_M1.read() == 1 && ARVALID_M1.read() == 1) target_read = 1;
+            else if (ARLOCK_M2.read() == 1 && ARVALID_M2.read() == 1) target_read = 2;
+            else if (ARLOCK_M3.read() == 1 && ARVALID_M3.read() == 1) target_read = 3;
+            else if (ARVALID_M0.read() == 1) target_read = 0;
+            else if (ARVALID_M1.read() == 1) target_read = 1;
+            else if (ARVALID_M2.read() == 1) target_read = 2;
+            else if (ARVALID_M3.read() == 1) target_read = 3;
+        }
+
+        if (target_read == 0) {
+            ARADDR_OUT.write(ARADDR_M0.read());
+            ARLEN_OUT.write(ARLEN_M0.read());
+            ARVALID_OUT.write(ARVALID_M0.read());
+            ARREADY_M0.write(ARREADY_IN.read());
+            ARREADY_M1.write(0); ARREADY_M2.write(0); ARREADY_M3.write(0);
+
+            RDATA_M0.write(RDATA_IN.read());
+            RRESP_M0.write(RRESP_IN.read());
+            RVALID_M0.write(RVALID_IN.read());
+            RLAST_M0.write(RLAST_IN.read());
+            RVALID_M1.write(0); RVALID_M2.write(0); RVALID_M3.write(0);
             RREADY_OUT.write(RREADY_M0.read());
-        } else if (active_read_master == 1) {
+        } else if (target_read == 1) {
+            ARADDR_OUT.write(ARADDR_M1.read());
+            ARLEN_OUT.write(ARLEN_M1.read());
+            ARVALID_OUT.write(ARVALID_M1.read());
+            ARREADY_M1.write(ARREADY_IN.read());
+            ARREADY_M0.write(0); ARREADY_M2.write(0); ARREADY_M3.write(0);
+
+            RDATA_M1.write(RDATA_IN.read());
+            RRESP_M1.write(RRESP_IN.read());
+            RVALID_M1.write(RVALID_IN.read());
+            RLAST_M1.write(RLAST_IN.read());
+            RVALID_M0.write(0); RVALID_M2.write(0); RVALID_M3.write(0);
             RREADY_OUT.write(RREADY_M1.read());
-        } else if (active_read_master == 2) {
+        } else if (target_read == 2) {
+            ARADDR_OUT.write(ARADDR_M2.read());
+            ARLEN_OUT.write(ARLEN_M2.read());
+            ARVALID_OUT.write(ARVALID_M2.read());
+            ARREADY_M2.write(ARREADY_IN.read());
+            ARREADY_M0.write(0); ARREADY_M1.write(0); ARREADY_M3.write(0);
+
+            RDATA_M2.write(RDATA_IN.read());
+            RRESP_M2.write(RRESP_IN.read());
+            RVALID_M2.write(RVALID_IN.read());
+            RLAST_M2.write(RLAST_IN.read());
+            RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M3.write(0);
             RREADY_OUT.write(RREADY_M2.read());
-        } else if (active_read_master == 3) {
+        } else if (target_read == 3) {
+            ARADDR_OUT.write(ARADDR_M3.read());
+            ARLEN_OUT.write(ARLEN_M3.read());
+            ARVALID_OUT.write(ARVALID_M3.read());
+            ARREADY_M3.write(ARREADY_IN.read());
+            ARREADY_M0.write(0); ARREADY_M1.write(0); ARREADY_M2.write(0);
+
+            RDATA_M3.write(RDATA_IN.read());
+            RRESP_M3.write(RRESP_IN.read());
+            RVALID_M3.write(RVALID_IN.read());
+            RLAST_M3.write(RLAST_IN.read());
+            RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M2.write(0);
             RREADY_OUT.write(RREADY_M3.read());
         } else {
+            ARADDR_OUT.write(0);
+            ARLEN_OUT.write(0);
+            ARVALID_OUT.write(0);
+            ARREADY_M0.write(0); ARREADY_M1.write(0); ARREADY_M2.write(0); ARREADY_M3.write(0);
+
+            RVALID_M0.write(0); RVALID_M1.write(0); RVALID_M2.write(0); RVALID_M3.write(0);
             RREADY_OUT.write(0);
         }
     }
 
-    SC_CTOR(axi_interconnect) { 
-        SC_THREAD(process_interconnect); 
-        sensitive << ACLK.pos() << ARESETN.neg(); 
+    // Sequential arbitration updates (at clock edge)
+    void process_interconnect() {
+        if (!ARESETN.read()) {
+            active_master.write(-1);
+            active_read_master.write(-1);
+            return;
+        }
 
-        SC_METHOD(process_handshakes);
-        sensitive << ACLK.pos()
-                  << BREADY_M0 << BREADY_M1 << BREADY_M2 << BREADY_M3
-                  << RREADY_M0 << RREADY_M1 << RREADY_M2 << RREADY_M3;
+        // 1. UPDATE ACTIVE WRITE MASTER
+        if (active_master.read() == -1) {
+            int selected = -1;
+            if (AWLOCK_M0.read() == 1 && AWVALID_M0.read() == 1) selected = 0;
+            else if (AWLOCK_M1.read() == 1 && AWVALID_M1.read() == 1) selected = 1;
+            else if (AWLOCK_M2.read() == 1 && AWVALID_M2.read() == 1) selected = 2;
+            else if (AWLOCK_M3.read() == 1 && AWVALID_M3.read() == 1) selected = 3;
+            else if (AWVALID_M0.read() == 1) selected = 0;
+            else if (AWVALID_M1.read() == 1) selected = 1;
+            else if (AWVALID_M2.read() == 1) selected = 2;
+            else if (AWVALID_M3.read() == 1) selected = 3;
+
+            // Lock master when the address handshake occurs
+            if (selected != -1 && AWREADY_IN.read() == 1) {
+                active_master.write(selected);
+            }
+        } else {
+            // Release master when write response handshake occurs
+            bool completed = false;
+            int curr = active_master.read();
+            if (curr == 0 && BVALID_IN.read() == 1 && BREADY_M0.read() == 1) completed = true;
+            else if (curr == 1 && BVALID_IN.read() == 1 && BREADY_M1.read() == 1) completed = true;
+            else if (curr == 2 && BVALID_IN.read() == 1 && BREADY_M2.read() == 1) completed = true;
+            else if (curr == 3 && BVALID_IN.read() == 1 && BREADY_M3.read() == 1) completed = true;
+
+            if (completed) {
+                active_master.write(-1);
+            }
+        }
+
+        // 2. UPDATE ACTIVE READ MASTER
+        if (active_read_master.read() == -1) {
+            int selected_read = -1;
+            if (ARLOCK_M0.read() == 1 && ARVALID_M0.read() == 1) selected_read = 0;
+            else if (ARLOCK_M1.read() == 1 && ARVALID_M1.read() == 1) selected_read = 1;
+            else if (ARLOCK_M2.read() == 1 && ARVALID_M2.read() == 1) selected_read = 2;
+            else if (ARLOCK_M3.read() == 1 && ARVALID_M3.read() == 1) selected_read = 3;
+            else if (ARVALID_M0.read() == 1) selected_read = 0;
+            else if (ARVALID_M1.read() == 1) selected_read = 1;
+            else if (ARVALID_M2.read() == 1) selected_read = 2;
+            else if (ARVALID_M3.read() == 1) selected_read = 3;
+
+            // Lock read master when address handshake occurs
+            if (selected_read != -1 && ARREADY_IN.read() == 1) {
+                active_read_master.write(selected_read);
+            }
+        } else {
+            // Release read master when read burst completes
+            bool completed_read = false;
+            int curr_r = active_read_master.read();
+            if (curr_r == 0 && RVALID_IN.read() == 1 && RREADY_M0.read() == 1 && RLAST_IN.read() == 1) completed_read = true;
+            else if (curr_r == 1 && RVALID_IN.read() == 1 && RREADY_M1.read() == 1 && RLAST_IN.read() == 1) completed_read = true;
+            else if (curr_r == 2 && RVALID_IN.read() == 1 && RREADY_M2.read() == 1 && RLAST_IN.read() == 1) completed_read = true;
+            else if (curr_r == 3 && RVALID_IN.read() == 1 && RREADY_M3.read() == 1 && RLAST_IN.read() == 1) completed_read = true;
+
+            if (completed_read) {
+                active_read_master.write(-1);
+            }
+        }
+    }
+
+    SC_CTOR(axi_interconnect) { 
+        SC_METHOD(route_signals);
+        sensitive << active_master << active_read_master
+                  << AWADDR_M0 << AWLEN_M0 << AWVALID_M0 << WDATA_M0 << WVALID_M0 << WLAST_M0 << BREADY_M0
+                  << AWADDR_M1 << AWLEN_M1 << AWVALID_M1 << WDATA_M1 << WVALID_M1 << WLAST_M1 << BREADY_M1
+                  << AWADDR_M2 << AWLEN_M2 << AWVALID_M2 << WDATA_M2 << WVALID_M2 << WLAST_M2 << BREADY_M2
+                  << AWADDR_M3 << AWLEN_M3 << AWVALID_M3 << WDATA_M3 << WVALID_M3 << WLAST_M3 << BREADY_M3
+                  << AWREADY_IN << WREADY_IN << BVALID_IN << BRESP_IN
+                  << ARADDR_M0 << ARLEN_M0 << ARVALID_M0 << RREADY_M0
+                  << ARADDR_M1 << ARLEN_M1 << ARVALID_M1 << RREADY_M1
+                  << ARADDR_M2 << ARLEN_M2 << ARVALID_M2 << RREADY_M2
+                  << ARADDR_M3 << ARLEN_M3 << ARVALID_M3 << RREADY_M3
+                  << ARREADY_IN << RDATA_IN << RRESP_IN << RVALID_IN << RLAST_IN;
+
+        SC_METHOD(process_interconnect); 
+        sensitive << ACLK.pos() << ARESETN.neg(); 
     }
 };
 #endif
